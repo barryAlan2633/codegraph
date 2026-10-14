@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from codegraph import __version__
 from codegraph.config import get_settings
 
 
@@ -43,7 +44,7 @@ def neo4j_options(func):
 
 
 @click.group()
-@click.version_option(package_name="codegraph")
+@click.version_option(version=__version__, prog_name="codegraph")
 def main():
     """codegraph -- codebase knowledge graph tool."""
 
