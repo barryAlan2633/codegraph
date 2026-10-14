@@ -303,3 +303,13 @@ def query(
             click.echo(line)
     finally:
         client.close()
+
+
+@main.command(name="stats-csv")
+@neo4j_options
+def stats_csv(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+    """Print graph statistics as CSV."""
+    client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
+    stats = client.get_stats()
+    print("nodes,edges")
+    print(str(stats["nodes"]) + "," + str(stats["edges"]))
