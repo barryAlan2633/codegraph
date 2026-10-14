@@ -317,3 +317,16 @@ def export(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | 
         click.echo("Exported graph stats to codegraph_export.json")
     finally:
         client.close()
+
+
+@main.command(name="stats-csv")
+@neo4j_options
+def stats_csv(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+    """Print graph statistics as CSV."""
+    client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
+    try:
+        stats = client.get_stats()
+        click.echo("nodes,edges")
+        click.echo(f"{stats['nodes']},{stats['edges']}")
+    finally:
+        client.close()

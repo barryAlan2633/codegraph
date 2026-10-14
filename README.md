@@ -90,6 +90,7 @@ codegraph init [REPO_PATH]      Full index of a codebase
 codegraph update [REPO_PATH]    Incremental update of changed files
 codegraph serve                  Start MCP server (stdio)
 codegraph status                 Show graph stats
+codegraph stats-csv              Print graph stats as CSV
 codegraph clear                  Wipe the database
 codegraph query <NAME>           Quick symbol lookup
 codegraph export                 Export graph stats to codegraph_export.json

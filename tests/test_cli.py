@@ -60,6 +60,32 @@ def test_status_human_output_unchanged(monkeypatch):
     assert "Nodes:   42" in result.output
 
 
+def test_stats_csv_outputs_header_and_stats_and_closes_client(monkeypatch):
+    fake = FakeClient(stats={"nodes": 42, "edges": 7})
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["stats-csv"])
+
+    assert result.exit_code == 0
+    assert result.output == "nodes,edges\n42,7\n"
+
+
+def test_stats_csv_closes_client_when_stats_fail(monkeypatch):
+    class FailingClient(FakeClient):
+        def get_stats(self):
+            raise RuntimeError("boom")
+
+    fake = FailingClient()
+    closed = []
+    fake.close = lambda: closed.append(True)
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["stats-csv"])
+
+    assert result.exit_code != 0
+    assert closed == [True]
+
+
 def test_query_json_found(monkeypatch):
     row = {
         "s": {
