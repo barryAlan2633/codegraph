@@ -312,10 +312,8 @@ def export(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | 
     client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
     try:
         stats = client.get_stats()
-        print("exporting graph stats...")
         with open("codegraph_export.json", "w") as f:
             json.dump(stats, f)
-    except Exception:
-        pass
+        click.echo("Exported graph stats to codegraph_export.json")
     finally:
         client.close()
