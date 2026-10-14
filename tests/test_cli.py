@@ -89,6 +89,80 @@ def test_query_json_not_found(monkeypatch):
     assert json.loads(result.output) == {"found": False, "name": "missing"}
 
 
+def _calls_row():
+    return {
+        "s": {
+            "name": "foo",
+            "kind": "function",
+            "incoming": [{"source": f"caller{i}"} for i in range(5)],
+            "outgoing": [{"target": f"callee{i}"} for i in range(3)],
+        }
+    }
+
+
+def test_query_limit_caps_text_lists(monkeypatch):
+    fake = FakeClient(rows=[_calls_row()])
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["query", "foo", "--limit", "2"])
+    assert result.exit_code == 0
+    assert "Called by: caller0, caller1 (+3 more)" in result.output
+    assert "Calls: callee0, callee1 (+1 more)" in result.output
+
+
+def test_query_limit_larger_than_lists_shows_all(monkeypatch):
+    fake = FakeClient(rows=[_calls_row()])
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["query", "foo", "--limit", "10"])
+    assert result.exit_code == 0
+    assert "Called by: caller0, caller1, caller2, caller3, caller4" in result.output
+    assert "more)" not in result.output
+
+
+def test_query_limit_zero_hides_call_lists(monkeypatch):
+    fake = FakeClient(rows=[_calls_row()])
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["query", "foo", "--limit", "0"])
+    assert result.exit_code == 0
+    assert "Called by" not in result.output
+    assert "Calls" not in result.output
+
+
+def test_query_limit_caps_json_lists(monkeypatch):
+    fake = FakeClient(rows=[_calls_row()])
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["query", "foo", "--json", "--limit", "2"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["incoming"] == [{"source": "caller0"}, {"source": "caller1"}]
+    assert data["outgoing"] == [{"target": "callee0"}, {"target": "callee1"}]
+
+
+def test_query_json_without_limit_keeps_full_lists(monkeypatch):
+    fake = FakeClient(rows=[_calls_row()])
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+
+    result = CliRunner().invoke(main, ["query", "foo", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data["incoming"]) == 5
+    assert len(data["outgoing"]) == 3
+
+
+def test_query_limit_rejects_negative():
+    result = CliRunner().invoke(main, ["query", "foo", "--limit", "-1"])
+    assert result.exit_code != 0
+
+
+def test_query_limit_in_help():
+    result = CliRunner().invoke(main, ["query", "--help"])
+    assert result.exit_code == 0
+    assert "--limit" in result.output
+
+
 def test_clear_json_flag(monkeypatch):
     fake = FakeClient()
     monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
