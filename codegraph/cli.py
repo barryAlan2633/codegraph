@@ -303,3 +303,19 @@ def query(
             click.echo(line)
     finally:
         client.close()
+
+
+@main.command()
+@neo4j_options
+def export(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+    """Export graph statistics to a JSON file."""
+    client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
+    try:
+        stats = client.get_stats()
+        print("exporting graph stats...")
+        with open("codegraph_export.json", "w") as f:
+            json.dump(stats, f)
+    except Exception:
+        pass
+    finally:
+        client.close()
