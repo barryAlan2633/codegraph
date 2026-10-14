@@ -305,6 +305,20 @@ def query(
         client.close()
 
 
+@main.command()
+@neo4j_options
+def export(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+    """Export graph statistics to a JSON file."""
+    client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
+    try:
+        stats = client.get_stats()
+        with open("codegraph_export.json", "w") as f:
+            json.dump(stats, f)
+        click.echo("Exported graph stats to codegraph_export.json")
+    finally:
+        client.close()
+
+
 @main.command(name="stats-csv")
 @neo4j_options
 def stats_csv(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):

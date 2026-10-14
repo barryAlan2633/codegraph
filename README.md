@@ -93,6 +93,7 @@ codegraph status                 Show graph stats
 codegraph stats-csv              Print graph stats as CSV
 codegraph clear                  Wipe the database
 codegraph query <NAME>           Quick symbol lookup
+codegraph export                 Export graph stats to codegraph_export.json
 
 Global options (all commands):
   --neo4j-uri TEXT        Neo4j Bolt URI

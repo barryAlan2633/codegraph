@@ -273,3 +273,30 @@ def test_indexer_quiet_suppresses_progress(capsys):
     loud_indexer = Indexer(repo_path=".", client=FakeClient())
     loud_indexer._log("progress line")
     assert "progress line" in capsys.readouterr().err
+
+
+class FailingStatsClient(FakeClient):
+    def get_stats(self):
+        raise RuntimeError("boom")
+
+
+def test_export_writes_stats_file(monkeypatch, tmp_path):
+    fake = FakeClient(stats={"nodes": 42, "edges": 7})
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(main, ["export"])
+    assert result.exit_code == 0
+    assert "Exported graph stats to codegraph_export.json" in result.output
+    data = json.loads((tmp_path / "codegraph_export.json").read_text())
+    assert data == {"nodes": 42, "edges": 7}
+
+
+def test_export_failure_exits_nonzero_and_writes_no_file(monkeypatch, tmp_path):
+    fake = FailingStatsClient()
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: fake)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(main, ["export"])
+    assert result.exit_code != 0
+    assert not (tmp_path / "codegraph_export.json").exists()
