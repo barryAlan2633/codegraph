@@ -226,11 +226,17 @@ class Indexer:
         client: Neo4jClient | None = None,
         ignore_patterns: set[str] | None = None,
         max_file_size_kb: int = 512,
+        quiet: bool = False,
     ) -> None:
         self.repo_path = Path(repo_path).resolve()
         self.client = client or Neo4jClient()
         self.ignore_patterns = ignore_patterns or set()
         self.max_file_size_kb = max_file_size_kb
+        self.quiet = quiet
+
+    def _log(self, *args, **kwargs) -> None:
+        if not self.quiet:
+            _log(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Full index
@@ -250,11 +256,11 @@ class Indexer:
 
         Returns a summary dict with file, node, and edge counts.
         """
-        _log(f"[codegraph] Starting full index of {self.repo_path}")
+        self._log(f"[codegraph] Starting full index of {self.repo_path}")
 
         # 1. Walk
         files = walk(self.repo_path, self.ignore_patterns, self.max_file_size_kb)
-        _log(f"[codegraph] Found {len(files)} source files")
+        self._log(f"[codegraph] Found {len(files)} source files")
 
         # 2+3. Parse and convert
         all_nodes: list[GraphNode] = []
@@ -262,7 +268,7 @@ class Indexer:
 
         for i, fpath in enumerate(files, 1):
             if i % 50 == 0 or i == len(files):
-                _log(f"[codegraph] Parsing {i}/{len(files)}: {fpath.name}")
+                self._log(f"[codegraph] Parsing {i}/{len(files)}: {fpath.name}")
             result = _do_parse(fpath)
             nodes, edges = _parse_result_to_graph(result, str(fpath))
             all_nodes.extend(nodes)
@@ -282,24 +288,24 @@ class Indexer:
             )
             all_nodes.append(module_node)
 
-        _log(
+        self._log(
             f"[codegraph] Parsed {len(all_nodes)} nodes, "
             f"{len(all_edges)} edges (pre-resolve)"
         )
 
         # 4. Resolve CALLS edges
         all_edges = _resolve_calls(all_edges, all_nodes)
-        _log(f"[codegraph] After call resolution: {len(all_edges)} edges")
+        self._log(f"[codegraph] After call resolution: {len(all_edges)} edges")
 
         # 5. Clear database and upsert
-        _log("[codegraph] Clearing database...")
+        self._log("[codegraph] Clearing database...")
         self.client.clear_all()
         self.client.ensure_schema()
 
-        _log("[codegraph] Upserting nodes...")
+        self._log("[codegraph] Upserting nodes...")
         node_count = self.client.upsert_nodes(all_nodes)
 
-        _log("[codegraph] Upserting edges...")
+        self._log("[codegraph] Upserting edges...")
         edge_count = self.client.upsert_edges(all_edges)
 
         # 6. Save hashes
@@ -307,7 +313,7 @@ class Indexer:
         save_hashes(self.repo_path, hashes)
 
         stats = {"files": len(files), "nodes": node_count, "edges": edge_count}
-        _log(f"[codegraph] Full index complete: {stats}")
+        self._log(f"[codegraph] Full index complete: {stats}")
         return stats
 
     # ------------------------------------------------------------------
@@ -328,11 +334,11 @@ class Indexer:
 
         Returns a summary dict.
         """
-        _log(f"[codegraph] Starting incremental update of {self.repo_path}")
+        self._log(f"[codegraph] Starting incremental update of {self.repo_path}")
 
         # 1. Walk
         files = walk(self.repo_path, self.ignore_patterns, self.max_file_size_kb)
-        _log(f"[codegraph] Found {len(files)} source files")
+        self._log(f"[codegraph] Found {len(files)} source files")
 
         # 2. Diff hashes
         old_hashes = load_hashes(self.repo_path)
@@ -340,19 +346,19 @@ class Indexer:
         changes = diff(old_hashes, new_hashes)
 
         changed_files = changes.added | changes.modified
-        _log(
+        self._log(
             f"[codegraph] Changes: {len(changes.added)} added, "
             f"{len(changes.modified)} modified, {len(changes.deleted)} deleted"
         )
 
         if not changed_files and not changes.deleted:
-            _log("[codegraph] No changes detected -- skipping.")
+            self._log("[codegraph] No changes detected -- skipping.")
             return {"files": 0, "nodes": 0, "edges": 0}
 
         # 3. Delete graph data for changed + deleted files
         for fp in changes.deleted | changes.modified:
             self.client.delete_file_nodes(fp)
-        _log(
+        self._log(
             f"[codegraph] Deleted graph data for "
             f"{len(changes.deleted | changes.modified)} files"
         )
@@ -366,7 +372,7 @@ class Indexer:
             if not fpath.exists():
                 continue
             if i % 50 == 0 or i == len(changed_files):
-                _log(f"[codegraph] Parsing {i}/{len(changed_files)}: {fpath.name}")
+                self._log(f"[codegraph] Parsing {i}/{len(changed_files)}: {fpath.name}")
 
             result = _do_parse(fpath)
             nodes, edges = _parse_result_to_graph(result, str(fpath))
@@ -411,7 +417,7 @@ class Indexer:
 
         combined_nodes = existing_nodes + all_nodes
         all_edges = _resolve_calls(all_edges, combined_nodes)
-        _log(f"[codegraph] Resolved edges: {len(all_edges)}")
+        self._log(f"[codegraph] Resolved edges: {len(all_edges)}")
 
         # Upsert new data
         node_count = self.client.upsert_nodes(all_nodes)
@@ -425,5 +431,5 @@ class Indexer:
             "nodes": node_count,
             "edges": edge_count,
         }
-        _log(f"[codegraph] Incremental update complete: {stats}")
+        self._log(f"[codegraph] Incremental update complete: {stats}")
         return stats

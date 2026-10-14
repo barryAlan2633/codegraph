@@ -178,3 +178,72 @@ def test_json_flag_in_help():
         result = CliRunner().invoke(main, [cmd, "--help"])
         assert result.exit_code == 0
         assert "--json" in result.output, cmd
+
+
+def test_quiet_flag_in_help():
+    for cmd in ("init", "update"):
+        result = CliRunner().invoke(main, [cmd, "--help"])
+        assert result.exit_code == 0
+        assert "--quiet" in result.output, cmd
+
+
+class FakeIndexer:
+    captured_quiet = None
+
+    def __init__(self, *, quiet=False, **_kwargs):
+        FakeIndexer.captured_quiet = quiet
+
+    def full_index(self):
+        return {"files": 1, "nodes": 2, "edges": 3}
+
+    def incremental_update(self):
+        return {"files": 1, "nodes": 2, "edges": 3}
+
+
+def _patch_indexing(monkeypatch):
+    import codegraph.indexer as indexer_pkg
+
+    monkeypatch.setattr(cli_module, "_make_client", lambda *a: FakeClient())
+    monkeypatch.setattr(indexer_pkg, "Indexer", FakeIndexer)
+    FakeIndexer.captured_quiet = None
+
+
+def test_init_quiet_passed_to_indexer(monkeypatch):
+    _patch_indexing(monkeypatch)
+    result = CliRunner().invoke(main, ["init", ".", "--quiet"])
+    assert result.exit_code == 0
+    assert FakeIndexer.captured_quiet is True
+    assert "Done. Files: 1, Nodes: 2, Edges: 3" in result.output
+
+
+def test_init_default_not_quiet(monkeypatch):
+    _patch_indexing(monkeypatch)
+    result = CliRunner().invoke(main, ["init", "."])
+    assert result.exit_code == 0
+    assert FakeIndexer.captured_quiet is False
+
+
+def test_update_quiet_short_flag(monkeypatch):
+    _patch_indexing(monkeypatch)
+    result = CliRunner().invoke(main, ["update", ".", "-q"])
+    assert result.exit_code == 0
+    assert FakeIndexer.captured_quiet is True
+
+
+def test_init_quiet_with_json_outputs_only_json(monkeypatch):
+    _patch_indexing(monkeypatch)
+    result = CliRunner().invoke(main, ["init", ".", "--quiet", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"files": 1, "nodes": 2, "edges": 3}
+
+
+def test_indexer_quiet_suppresses_progress(capsys):
+    from codegraph.indexer.indexer import Indexer
+
+    quiet_indexer = Indexer(repo_path=".", client=FakeClient(), quiet=True)
+    quiet_indexer._log("progress line")
+    assert capsys.readouterr().err == ""
+
+    loud_indexer = Indexer(repo_path=".", client=FakeClient())
+    loud_indexer._log("progress line")
+    assert "progress line" in capsys.readouterr().err
