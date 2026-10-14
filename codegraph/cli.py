@@ -48,6 +48,14 @@ json_option = click.option(
     "--json", "as_json", is_flag=True, default=False, help="Print machine-readable JSON output."
 )
 
+quiet_option = click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    default=False,
+    help="Suppress progress output on stderr; only the final summary is printed.",
+)
+
 
 @click.group()
 @click.version_option(version=__version__, prog_name="codegraph")
@@ -59,12 +67,14 @@ def main():
 @click.argument("repo_path", default=".", type=click.Path(exists=True))
 @neo4j_options
 @json_option
+@quiet_option
 def init(
     repo_path: str,
     neo4j_uri: str | None,
     neo4j_user: str | None,
     neo4j_password: str | None,
     as_json: bool,
+    quiet: bool,
 ):
     """Full index of a codebase into the knowledge graph."""
     from codegraph.indexer import Indexer
@@ -78,6 +88,7 @@ def init(
             client=client,
             ignore_patterns=set(settings.ignore_patterns),
             max_file_size_kb=settings.max_file_size_kb,
+            quiet=quiet,
         )
         summary = indexer.full_index()
         if as_json:
@@ -96,12 +107,14 @@ def init(
 @click.argument("repo_path", default=".", type=click.Path(exists=True))
 @neo4j_options
 @json_option
+@quiet_option
 def update(
     repo_path: str,
     neo4j_uri: str | None,
     neo4j_user: str | None,
     neo4j_password: str | None,
     as_json: bool,
+    quiet: bool,
 ):
     """Incremental update of changed files."""
     from codegraph.indexer import Indexer
@@ -115,6 +128,7 @@ def update(
             client=client,
             ignore_patterns=set(settings.ignore_patterns),
             max_file_size_kb=settings.max_file_size_kb,
+            quiet=quiet,
         )
         summary = indexer.incremental_update()
         if as_json:
