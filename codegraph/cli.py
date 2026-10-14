@@ -202,12 +202,19 @@ def clear(
 @click.argument("name")
 @neo4j_options
 @json_option
+@click.option(
+    "--limit",
+    type=click.IntRange(min=0),
+    default=None,
+    help="Cap the 'Called by' and 'Calls' lists at N entries each.",
+)
 def query(
     name: str,
     neo4j_uri: str | None,
     neo4j_user: str | None,
     neo4j_password: str | None,
     as_json: bool,
+    limit: int | None,
 ):
     """Quick symbol lookup from the CLI."""
     from codegraph.graph import queries as q
@@ -231,8 +238,22 @@ def query(
         else:
             r = row
 
+        incoming = [i for i in (r.get("incoming") or []) if i.get("source")]
+        outgoing = [o for o in (r.get("outgoing") or []) if o.get("target")]
+        incoming_total = len(incoming)
+        outgoing_total = len(outgoing)
+        if limit is not None:
+            incoming = incoming[:limit]
+            outgoing = outgoing[:limit]
+
         if as_json:
-            click.echo(json.dumps({"found": True, **r}, default=str))
+            payload = {"found": True, **r}
+            if limit is not None:
+                # Cap the call lists; drop entries without a source/target so the
+                # cap counts the same items the text output shows.
+                payload["incoming"] = incoming
+                payload["outgoing"] = outgoing
+            click.echo(json.dumps(payload, default=str))
             return
 
         kind = str(r.get("kind", "symbol")).capitalize()
@@ -255,13 +276,16 @@ def query(
         if r.get("docstring"):
             click.echo(f"Docstring: {r['docstring']}")
 
-        incoming = [i for i in (r.get("incoming") or []) if i.get("source")]
         if incoming:
-            strs = [i["source"] for i in incoming]
-            click.echo(f"Called by: {', '.join(strs)}")
+            line = f"Called by: {', '.join(i['source'] for i in incoming)}"
+            if incoming_total > len(incoming):
+                line += f" (+{incoming_total - len(incoming)} more)"
+            click.echo(line)
 
-        outgoing = [o for o in (r.get("outgoing") or []) if o.get("target")]
         if outgoing:
-            click.echo(f"Calls: {', '.join(o['target'] for o in outgoing)}")
+            line = f"Calls: {', '.join(o['target'] for o in outgoing)}"
+            if outgoing_total > len(outgoing):
+                line += f" (+{outgoing_total - len(outgoing)} more)"
+            click.echo(line)
     finally:
         client.close()
