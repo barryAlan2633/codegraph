@@ -171,11 +171,21 @@ def status(
 @main.command()
 @neo4j_options
 @json_option
-@click.confirmation_option(prompt="This will delete all data in the graph. Continue?")
+@click.option("--yes", is_flag=True, default=False, help="Skip the confirmation prompt.")
 def clear(
-    neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None, as_json: bool
+    neo4j_uri: str | None,
+    neo4j_user: str | None,
+    neo4j_password: str | None,
+    as_json: bool,
+    yes: bool,
 ):
     """Wipe the entire graph database."""
+    # Prompt on stderr so stdout stays machine-readable in --json mode.
+    if not yes and not click.confirm(
+        "This will delete all data in the graph. Continue?", err=True
+    ):
+        raise click.Abort()
+
     client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
 
     try:

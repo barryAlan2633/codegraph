@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import os
 from pathlib import Path
 
@@ -26,6 +28,11 @@ _EXT_TO_LANG: dict[str, str] = {
     ".rs": "rust",
 }
 
+
+
+def _log(*args, **kwargs):
+    """Progress/diagnostics go to stderr so stdout stays machine-readable."""
+    print(*args, file=sys.stderr, **kwargs)
 
 def _language_for_file(file_path: str) -> str:
     """Derive a language string from the file extension."""
@@ -243,11 +250,11 @@ class Indexer:
 
         Returns a summary dict with file, node, and edge counts.
         """
-        print(f"[codegraph] Starting full index of {self.repo_path}")
+        _log(f"[codegraph] Starting full index of {self.repo_path}")
 
         # 1. Walk
         files = walk(self.repo_path, self.ignore_patterns, self.max_file_size_kb)
-        print(f"[codegraph] Found {len(files)} source files")
+        _log(f"[codegraph] Found {len(files)} source files")
 
         # 2+3. Parse and convert
         all_nodes: list[GraphNode] = []
@@ -255,7 +262,7 @@ class Indexer:
 
         for i, fpath in enumerate(files, 1):
             if i % 50 == 0 or i == len(files):
-                print(f"[codegraph] Parsing {i}/{len(files)}: {fpath.name}")
+                _log(f"[codegraph] Parsing {i}/{len(files)}: {fpath.name}")
             result = _do_parse(fpath)
             nodes, edges = _parse_result_to_graph(result, str(fpath))
             all_nodes.extend(nodes)
@@ -275,24 +282,24 @@ class Indexer:
             )
             all_nodes.append(module_node)
 
-        print(
+        _log(
             f"[codegraph] Parsed {len(all_nodes)} nodes, "
             f"{len(all_edges)} edges (pre-resolve)"
         )
 
         # 4. Resolve CALLS edges
         all_edges = _resolve_calls(all_edges, all_nodes)
-        print(f"[codegraph] After call resolution: {len(all_edges)} edges")
+        _log(f"[codegraph] After call resolution: {len(all_edges)} edges")
 
         # 5. Clear database and upsert
-        print("[codegraph] Clearing database...")
+        _log("[codegraph] Clearing database...")
         self.client.clear_all()
         self.client.ensure_schema()
 
-        print("[codegraph] Upserting nodes...")
+        _log("[codegraph] Upserting nodes...")
         node_count = self.client.upsert_nodes(all_nodes)
 
-        print("[codegraph] Upserting edges...")
+        _log("[codegraph] Upserting edges...")
         edge_count = self.client.upsert_edges(all_edges)
 
         # 6. Save hashes
@@ -300,7 +307,7 @@ class Indexer:
         save_hashes(self.repo_path, hashes)
 
         stats = {"files": len(files), "nodes": node_count, "edges": edge_count}
-        print(f"[codegraph] Full index complete: {stats}")
+        _log(f"[codegraph] Full index complete: {stats}")
         return stats
 
     # ------------------------------------------------------------------
@@ -321,11 +328,11 @@ class Indexer:
 
         Returns a summary dict.
         """
-        print(f"[codegraph] Starting incremental update of {self.repo_path}")
+        _log(f"[codegraph] Starting incremental update of {self.repo_path}")
 
         # 1. Walk
         files = walk(self.repo_path, self.ignore_patterns, self.max_file_size_kb)
-        print(f"[codegraph] Found {len(files)} source files")
+        _log(f"[codegraph] Found {len(files)} source files")
 
         # 2. Diff hashes
         old_hashes = load_hashes(self.repo_path)
@@ -333,19 +340,19 @@ class Indexer:
         changes = diff(old_hashes, new_hashes)
 
         changed_files = changes.added | changes.modified
-        print(
+        _log(
             f"[codegraph] Changes: {len(changes.added)} added, "
             f"{len(changes.modified)} modified, {len(changes.deleted)} deleted"
         )
 
         if not changed_files and not changes.deleted:
-            print("[codegraph] No changes detected -- skipping.")
+            _log("[codegraph] No changes detected -- skipping.")
             return {"files": 0, "nodes": 0, "edges": 0}
 
         # 3. Delete graph data for changed + deleted files
         for fp in changes.deleted | changes.modified:
             self.client.delete_file_nodes(fp)
-        print(
+        _log(
             f"[codegraph] Deleted graph data for "
             f"{len(changes.deleted | changes.modified)} files"
         )
@@ -359,7 +366,7 @@ class Indexer:
             if not fpath.exists():
                 continue
             if i % 50 == 0 or i == len(changed_files):
-                print(f"[codegraph] Parsing {i}/{len(changed_files)}: {fpath.name}")
+                _log(f"[codegraph] Parsing {i}/{len(changed_files)}: {fpath.name}")
 
             result = _do_parse(fpath)
             nodes, edges = _parse_result_to_graph(result, str(fpath))
@@ -404,7 +411,7 @@ class Indexer:
 
         combined_nodes = existing_nodes + all_nodes
         all_edges = _resolve_calls(all_edges, combined_nodes)
-        print(f"[codegraph] Resolved edges: {len(all_edges)}")
+        _log(f"[codegraph] Resolved edges: {len(all_edges)}")
 
         # Upsert new data
         node_count = self.client.upsert_nodes(all_nodes)
@@ -418,5 +425,5 @@ class Indexer:
             "nodes": node_count,
             "edges": edge_count,
         }
-        print(f"[codegraph] Incremental update complete: {stats}")
+        _log(f"[codegraph] Incremental update complete: {stats}")
         return stats
