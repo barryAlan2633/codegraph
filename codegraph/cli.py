@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -43,6 +44,11 @@ def neo4j_options(func):
     return func
 
 
+json_option = click.option(
+    "--json", "as_json", is_flag=True, default=False, help="Print machine-readable JSON output."
+)
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="codegraph")
 def main():
@@ -52,7 +58,14 @@ def main():
 @main.command()
 @click.argument("repo_path", default=".", type=click.Path(exists=True))
 @neo4j_options
-def init(repo_path: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+@json_option
+def init(
+    repo_path: str,
+    neo4j_uri: str | None,
+    neo4j_user: str | None,
+    neo4j_password: str | None,
+    as_json: bool,
+):
     """Full index of a codebase into the knowledge graph."""
     from codegraph.indexer import Indexer
 
@@ -67,11 +80,14 @@ def init(repo_path: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_pa
             max_file_size_kb=settings.max_file_size_kb,
         )
         summary = indexer.full_index()
-        click.echo(
-            f"Done. Files: {summary['files']}, "
-            f"Nodes: {summary['nodes']}, "
-            f"Edges: {summary['edges']}"
-        )
+        if as_json:
+            click.echo(json.dumps(summary))
+        else:
+            click.echo(
+                f"Done. Files: {summary['files']}, "
+                f"Nodes: {summary['nodes']}, "
+                f"Edges: {summary['edges']}"
+            )
     finally:
         client.close()
 
@@ -79,7 +95,14 @@ def init(repo_path: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_pa
 @main.command()
 @click.argument("repo_path", default=".", type=click.Path(exists=True))
 @neo4j_options
-def update(repo_path: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+@json_option
+def update(
+    repo_path: str,
+    neo4j_uri: str | None,
+    neo4j_user: str | None,
+    neo4j_password: str | None,
+    as_json: bool,
+):
     """Incremental update of changed files."""
     from codegraph.indexer import Indexer
 
@@ -94,11 +117,14 @@ def update(repo_path: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_
             max_file_size_kb=settings.max_file_size_kb,
         )
         summary = indexer.incremental_update()
-        click.echo(
-            f"Done. Files: {summary['files']}, "
-            f"Nodes: {summary['nodes']}, "
-            f"Edges: {summary['edges']}"
-        )
+        if as_json:
+            click.echo(json.dumps(summary))
+        else:
+            click.echo(
+                f"Done. Files: {summary['files']}, "
+                f"Nodes: {summary['nodes']}, "
+                f"Edges: {summary['edges']}"
+            )
     finally:
         client.close()
 
@@ -123,29 +149,41 @@ def serve(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | N
 
 @main.command()
 @neo4j_options
-def status(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+@json_option
+def status(
+    neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None, as_json: bool
+):
     """Show graph statistics."""
     client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
 
     try:
         stats = client.get_stats()
-        click.echo("Graph statistics:")
-        click.echo(f"  Nodes:   {stats['nodes']}")
-        click.echo(f"  Edges:   {stats['edges']}")
+        if as_json:
+            click.echo(json.dumps(stats))
+        else:
+            click.echo("Graph statistics:")
+            click.echo(f"  Nodes:   {stats['nodes']}")
+            click.echo(f"  Edges:   {stats['edges']}")
     finally:
         client.close()
 
 
 @main.command()
 @neo4j_options
+@json_option
 @click.confirmation_option(prompt="This will delete all data in the graph. Continue?")
-def clear(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+def clear(
+    neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None, as_json: bool
+):
     """Wipe the entire graph database."""
     client = _make_client(neo4j_uri, neo4j_user, neo4j_password)
 
     try:
         client.clear_all()
-        click.echo("Database cleared.")
+        if as_json:
+            click.echo(json.dumps({"cleared": True}))
+        else:
+            click.echo("Database cleared.")
     finally:
         client.close()
 
@@ -153,7 +191,14 @@ def clear(neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | N
 @main.command()
 @click.argument("name")
 @neo4j_options
-def query(name: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_password: str | None):
+@json_option
+def query(
+    name: str,
+    neo4j_uri: str | None,
+    neo4j_user: str | None,
+    neo4j_password: str | None,
+    as_json: bool,
+):
     """Quick symbol lookup from the CLI."""
     from codegraph.graph import queries as q
 
@@ -162,7 +207,10 @@ def query(name: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_passwo
     try:
         rows = client.query(q.GET_SYMBOL, {"name": name})
         if not rows:
-            click.echo(f"Symbol '{name}' not found.")
+            if as_json:
+                click.echo(json.dumps({"found": False, "name": name}))
+            else:
+                click.echo(f"Symbol '{name}' not found.")
             return
 
         row = rows[0]
@@ -172,6 +220,10 @@ def query(name: str, neo4j_uri: str | None, neo4j_user: str | None, neo4j_passwo
             r = s
         else:
             r = row
+
+        if as_json:
+            click.echo(json.dumps({"found": True, **r}, default=str))
+            return
 
         kind = str(r.get("kind", "symbol")).capitalize()
         click.echo(f"{kind}: {r.get('name', name)}")
